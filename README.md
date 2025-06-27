@@ -1,1 +1,0 @@
-https://github.com/PALOMAHUUE/extras/blob/3b5cdeb389989c3be1aa49cebdeb3a199151b61d/distribuicao_extras_upa_norte_final_protegido.html
