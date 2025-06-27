@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8">
+  <title>Distribuição de Extras - Farmácia Upa Norte</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      padding: 20px;
+      background: #fff8dc;
+      max-width: 900px;
+      margin: auto;
+    }
+    header {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      margin-bottom: 20px;
+    }
+    header img {
+      height: 80px;
+      border-radius: 10px;
+    }
+    header h1 {
+      font-size: 26px;
+      color: #333;
+      margin: 0;
+    }
+    .fila {
+      display: flex;
+      flex-direction: row;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 20px;
+      margin: 20px 0;
+      padding: 20px;
+      background: #fffbe6;
+      border-radius: 10px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    .lista-nomes {
+      flex: 1;
+      text-align: left;
+    }
+    .proximo {
+      flex: 1;
+      text-align: center;
+      font-size: 24px;
+      font-weight: bold;
+    }
+    .opcoes, .registro {
+      margin: 20px 0;
+      padding: 20px;
+      background: #fffbe6;
+      border-radius: 10px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      text-align: center;
+    }
+    .opcoes span {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 5px 0;
+    }
+    .opcoes input[type='checkbox'] {
+      margin-right: 10px;
+    }
+    .botoes button {
+      margin-right: 10px;
+      padding: 10px 16px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      background: #ffc107;
+      color: #000;
+      font-weight: bold;
+    }
+    .botoes button:hover {
+      background: #e0a800;
+    }
+    #timer {
+      font-size: 20px;
+      margin-top: 10px;
+      color: #e63946;
+      text-align: center;
+    }
+    #progressBar {
+      height: 20px;
+      background: #ddd;
+      border-radius: 10px;
+      overflow: hidden;
+      margin-top: 10px;
+    }
+    #progressFill {
+      height: 100%;
+      background: #ffca28;
+      width: 100%;
+      transition: width 1s linear;
+    }
+    input[type="text"] {
+      padding: 6px;
+      margin: 5px 5px 5px 0;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      font-size: 15px;
+    }
+    ul {
+      padding-left: 20px;
+    }
+    .atual-piscando {
+      font-size: 24px;
+      font-weight: bold;
+      animation: piscar 1s infinite;
+    }
+    @keyframes piscar {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <img src="https://www.aracruz.es.gov.br/storage/portal-antigo/Banner_Noticias_UPA-msf1s4237slk3liblg35194btzg8pynt2vw9gn9goc.jpg" alt="Logo UPA">
+    <h1>Distribuição de Extras - Farmácia Upa Norte</h1>
+  </header>
+
+  <div>
+    <input type="text" id="nome" placeholder="Digite um nome">
+    <button onclick="adicionar()">Adicionar à fila</button>
+    <button onclick="resetarTudo()" style="background:#e63946;color:white">Resetar Fila</button>
+  </div>
+
+  <div>
+    <input type="text" id="novaOpcao" placeholder="Nova opção para selecionar">
+    <button onclick="adicionarOpcao()">Adicionar Opção</button>
+  </div>
+
+  <div class="fila">
+    <div class="lista-nomes" id="listaNomes"></div>
+    <div class="proximo" id="listaProximo"></div>
+  </div>
+
+  <div class="opcoes" id="opcoesDisponiveis"></div>
+
+  <div class="botoes">
+    <button onclick="chamarProximo()">Próximo</button>
+    <button onclick="respondeu()">Responder</button>
+    <button onclick="pular()">Pular</button>
+  </div>
+
+  <div id="atual" class="proximo"></div>
+  <div id="timer"></div>
+  <div id="progressBar"><div id="progressFill"></div></div>
+  <div class="registro" id="registroRespostas"><strong>Respostas:</strong><ul id="listaRespostas"></ul></div>
+
+  <audio id="alertaSom" src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg" preload="auto"></audio>
+  <audio id="somChamada" src="https://actions.google.com/sounds/v1/cartoon/pop.ogg" preload="auto"></audio>
+
+  <script>
+    let fila = JSON.parse(localStorage.getItem("fila")) || [];
+    let opcoes = JSON.parse(localStorage.getItem("opcoes")) || [];
+    let escolhas = JSON.parse(localStorage.getItem("escolhas")) || {};
+    let tempoLimite = 300;
+    let tempoRestante = tempoLimite;
+    let timerId = null;
+    let atual = null;
+
+    function salvarTudo() {
+      localStorage.setItem("fila", JSON.stringify(fila));
+      localStorage.setItem("opcoes", JSON.stringify(opcoes));
+      localStorage.setItem("escolhas", JSON.stringify(escolhas));
+    }
+
+    function resetarTudo() {
+      if (confirm("Deseja realmente resetar tudo?")) {
+        fila = [];
+        opcoes = [];
+        escolhas = {};
+        document.getElementById("listaRespostas").innerHTML = "";
+        salvarTudo();
+        renderFila();
+        renderOpcoes();
+        document.getElementById("atual").innerText = "Fila resetada.";
+        document.getElementById("timer").innerText = "";
+        atualizarBarra();
+      }
+    }
+
+    function adicionar() {
+      const nome = document.getElementById("nome").value.trim();
+      if (nome && !fila.includes(nome)) {
+        fila.push(nome);
+        salvarTudo();
+        renderFila();
+        document.getElementById("nome").value = "";
+      }
+    }
+
+    function adicionarOpcao() {
+      const nova = document.getElementById("novaOpcao").value.trim();
+      if (nova && !opcoes.includes(nova)) {
+        opcoes.push(nova);
+        salvarTudo();
+        renderOpcoes();
+        document.getElementById("novaOpcao").value = "";
+      }
+    }
+
+    function renderFila() {
+      const divNomes = document.getElementById("listaNomes");
+      const divProximo = document.getElementById("listaProximo");
+      divNomes.innerHTML = '<strong>Fila:</strong><br>' + fila.map((p, i) => `${i + 1}. ${p}`).join('<br>');
+      divProximo.innerHTML = fila.length ? `<div>Próximo: ${fila[0]}</div>` : "<em>Fila vazia</em>";
+    }
+
+    function renderOpcoes() {
+      const div = document.getElementById("opcoesDisponiveis");
+      const opcoesRestantes = opcoes.filter(op => !Object.values(escolhas).flat().includes(op));
+      if (opcoesRestantes.length === 0) {
+        div.innerHTML = "<strong>Todos os plantões extras já foram escolhidos.</strong>";
+        return;
+      }
+
+      div.innerHTML = '<strong>Plantões extras disponíveis:</strong><br>';
+      opcoes.forEach((op) => {
+        const escolhidaPorOutro = Object.entries(escolhas).some(([nome, escolhasPessoa]) =>
+          nome !== atual && escolhasPessoa.includes(op)
+        );
+        const checked = escolhas[atual]?.includes(op) ? 'checked' : '';
+        const disabled = escolhidaPorOutro ? 'disabled' : '';
+        div.innerHTML += `<span><input type="checkbox" ${checked} ${disabled} onchange="marcarEscolha('${op}')"> ${op}</span>`;
+      });
+    }
+
+    function marcarEscolha(opcao) {
+      if (!atual) return;
+      if (!escolhas[atual]) escolhas[atual] = [];
+      if (escolhas[atual].includes(opcao)) {
+        escolhas[atual] = escolhas[atual].filter(o => o !== opcao);
+      } else {
+        escolhas[atual] = [opcao];
+      }
+      salvarTudo();
+      renderOpcoes();
+    }
+
+    function atualizarBarra() {
+      const percentual = (tempoRestante / tempoLimite) * 100;
+      document.getElementById("progressFill").style.width = percentual + "%";
+    }
+
+    function registrarResposta(nome) {
+      const lista = document.getElementById("listaRespostas");
+      const li = document.createElement("li");
+      const resposta = escolhas[nome] && escolhas[nome].length ? escolhas[nome].join(", ") : "nenhuma opção";
+      li.textContent = `${nome}: ${resposta}`;
+      lista.appendChild(li);
+      document.getElementById("somChamada").play();
+    }
+
+    function chamarProximo() {
+      if (timerId) clearInterval(timerId);
+
+      const opcoesRestantes = opcoes.filter(op => !Object.values(escolhas).flat().includes(op));
+      if (opcoesRestantes.length === 0) {
+        document.getElementById("atual").innerText = "Todas as opções foram escolhidas. Fim da seleção.";
+        document.getElementById("timer").innerText = "";
+        atualizarBarra();
+        return;
+      }
+
+      if (!fila.length) return;
+
+      atual = fila.shift();
+      fila.push(atual);
+      salvarTudo();
+      renderFila();
+
+      const atualDiv = document.getElementById("atual");
+      atualDiv.innerHTML = `<span class="atual-piscando">${atual}</span>`;
+      document.getElementById("somChamada").play();
+      tempoRestante = tempoLimite;
+      document.getElementById("timer").innerText = `⏳ ${tempoRestante}s`;
+      atualizarBarra();
+      renderOpcoes();
+
+      timerId = setInterval(() => {
+        tempoRestante--;
+        document.getElementById("timer").innerText = `⏳ ${tempoRestante}s`;
+        atualizarBarra();
+        if (tempoRestante <= 0) {
+          pular();
+        }
+      }, 1000);
+    }
+
+    function respondeu() {
+      if (timerId) clearInterval(timerId);
+      registrarResposta(atual);
+    // Remover opções já escolhidas do conjunto de disponíveis
+    opcoes = opcoes.filter(opcao =>
+      !Object.values(escolhas).flat().includes(opcao)
+    );
+    salvarTudo();
+      salvarTudo();
+      renderOpcoes();
+      document.getElementById("atual").innerText = `${atual} respondeu!`;
+      document.getElementById("timer").innerText = "";
+      atualizarBarra();
+      atual = null;
+      setTimeout(() => {
+        chamarProximo();
+      }, 1000);
+    }
+
+    function pular() {
+      if (timerId) clearInterval(timerId);
+      document.getElementById("alertaSom").play();
+      atual = null;
+      setTimeout(() => {
+        chamarProximo();
+      }, 1000);
+    }
+
+    ,${resposta}\n`;
+      }
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute("download", "respostas_extras_upa.csv");
+      link.style.display = "none";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+
+    renderFila();
+    renderOpcoes();
+    atualizarBarra();
+</script>
+    // (script já inserido na resposta anterior)
+  </script>
+
+  <script>
+    let fila = JSON.parse(localStorage.getItem("fila")) || [];
+    let opcoes = JSON.parse(localStorage.getItem("opcoes")) || [];
+    let escolhas = JSON.parse(localStorage.getItem("escolhas")) || {};
+    let tempoLimite = 300;
+    let tempoRestante = tempoLimite;
+    let timerId = null;
+    let atual = null;
+
+    function salvarTudo() {
+      localStorage.setItem("fila", JSON.stringify(fila));
+      localStorage.setItem("opcoes", JSON.stringify(opcoes));
+      localStorage.setItem("escolhas", JSON.stringify(escolhas));
+    }
+
+    function resetarTudo() {
+      if (confirm("Deseja realmente resetar tudo?")) {
+        fila = [];
+        opcoes = [];
+        escolhas = {};
+        document.getElementById("listaRespostas").innerHTML = "";
+        salvarTudo();
+        renderFila();
+        renderOpcoes();
+        document.getElementById("atual").innerText = "Fila resetada.";
+        document.getElementById("timer").innerText = "";
+        atualizarBarra();
+      }
+    }
+
+    function adicionar() {
+      const nome = document.getElementById("nome").value.trim();
+      if (nome && !fila.includes(nome)) {
+        fila.push(nome);
+        salvarTudo();
+        renderFila();
+        document.getElementById("nome").value = "";
+      }
+    }
+
+    function adicionarOpcao() {
+      const nova = document.getElementById("novaOpcao").value.trim();
+      if (nova && !opcoes.includes(nova)) {
+        opcoes.push(nova);
+        salvarTudo();
+        renderOpcoes();
+        document.getElementById("novaOpcao").value = "";
+      }
+    }
+
+    function renderFila() {
+      const divNomes = document.getElementById("listaNomes");
+      const divProximo = document.getElementById("listaProximo");
+      divNomes.innerHTML = '<strong>Fila:</strong><br>' + fila.map((p, i) => `${i + 1}. ${p}`).join('<br>');
+      divProximo.innerHTML = fila.length ? `<div>Próximo: ${fila[0]}</div>` : "<em>Fila vazia</em>";
+    }
+
+    function renderOpcoes() {
+      const div = document.getElementById("opcoesDisponiveis");
+      const opcoesRestantes = opcoes.filter(op => !Object.values(escolhas).flat().includes(op));
+      if (opcoesRestantes.length === 0) {
+        div.innerHTML = "<strong>Todos os plantões extras já foram escolhidos.</strong>";
+        return;
+      }
+
+      div.innerHTML = '<strong>Plantões extras disponíveis:</strong><br>';
+      opcoes.forEach((op) => {
+        const escolhidaPorOutro = Object.entries(escolhas).some(([nome, escolhasPessoa]) =>
+          nome !== atual && escolhasPessoa.includes(op)
+        );
+        const checked = escolhas[atual]?.includes(op) ? 'checked' : '';
+        const disabled = escolhidaPorOutro ? 'disabled' : '';
+        div.innerHTML += `<span><input type="checkbox" ${checked} ${disabled} onchange="marcarEscolha('${op}')"> ${op}</span>`;
+      });
+    }
+
+    function marcarEscolha(opcao) {
+      if (!atual) return;
+      if (!escolhas[atual]) escolhas[atual] = [];
+      if (escolhas[atual].includes(opcao)) {
+        escolhas[atual] = escolhas[atual].filter(o => o !== opcao);
+      } else {
+        escolhas[atual] = [opcao];
+      }
+      salvarTudo();
+      renderOpcoes();
+    }
+
+    function atualizarBarra() {
+      const percentual = (tempoRestante / tempoLimite) * 100;
+      document.getElementById("progressFill").style.width = percentual + "%";
+    }
+
+    function registrarResposta(nome) {
+      const lista = document.getElementById("listaRespostas");
+      const li = document.createElement("li");
+      const resposta = escolhas[nome] && escolhas[nome].length ? escolhas[nome].join(", ") : "nenhuma opção";
+      li.textContent = `${nome}: ${resposta}`;
+      lista.appendChild(li);
+      document.getElementById("somChamada").play();
+    }
+
+    function chamarProximo() {
+      if (timerId) clearInterval(timerId);
+
+      const opcoesRestantes = opcoes.filter(op => !Object.values(escolhas).flat().includes(op));
+      if (opcoesRestantes.length === 0) {
+        document.getElementById("atual").innerText = "Todas as opções foram escolhidas. Fim da seleção.";
+        document.getElementById("timer").innerText = "";
+        atualizarBarra();
+        return;
+      }
+
+      if (!fila.length) return;
+
+      atual = fila.shift();
+      fila.push(atual);
+      salvarTudo();
+      renderFila();
+
+      const atualDiv = document.getElementById("atual");
+      atualDiv.innerHTML = `<span class="atual-piscando">${atual}</span>`;
+      document.getElementById("somChamada").play();
+      tempoRestante = tempoLimite;
+      document.getElementById("timer").innerText = `⏳ ${tempoRestante}s`;
+      atualizarBarra();
+      renderOpcoes();
+
+      timerId = setInterval(() => {
+        tempoRestante--;
+        document.getElementById("timer").innerText = `⏳ ${tempoRestante}s`;
+        atualizarBarra();
+        if (tempoRestante <= 0) {
+          pular();
+        }
+      }, 1000);
+    }
+
+    function respondeu() {
+      if (timerId) clearInterval(timerId);
+      registrarResposta(atual);
+    // Remover opções já escolhidas do conjunto de disponíveis
+    opcoes = opcoes.filter(opcao =>
+      !Object.values(escolhas).flat().includes(opcao)
+    );
+    salvarTudo();
+      salvarTudo();
+      renderOpcoes();
+      document.getElementById("atual").innerText = `${atual} respondeu!`;
+      document.getElementById("timer").innerText = "";
+      atualizarBarra();
+      atual = null;
+      setTimeout(() => {
+        chamarProximo();
+      }, 1000);
+    }
+
+    function pular() {
+      if (timerId) clearInterval(timerId);
+      document.getElementById("alertaSom").play();
+      atual = null;
+      setTimeout(() => {
+        chamarProximo();
+      }, 1000);
+    }
+
+    function exportarCSV() {
+      let csv = "Nome,Escolha\n";
+      for (const nome in escolhas) {
+        const resposta = escolhas[nome] && escolhas[nome].length ? escolhas[nome].join(", ") : "nenhuma opção";
+        csv += `${nome},${resposta}\n`;
+      }
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute("download", "respostas_extras_upa.csv");
+      link.style.display = "none";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+
+    renderFila();
+    renderOpcoes();
+    atualizarBarra();
+</script>
+    function exportarCSV() {
+      let csv = "Nome,Escolha\n";
+      for (const nome in escolhas) {
+        const resposta = escolhas[nome] && escolhas[nome].length ? escolhas[nome].join(", ") : "nenhuma opção";
+        csv += `${nome},${resposta}\n`;
+      }
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute("download", "respostas_extras_upa.csv");
+      link.style.display = "none";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+  </script>
+<footer style="text-align:center;margin-top:40px;font-size:14px;color:#555;">
+      © 2025 Sistema de Distribuição de Plantões - Desenvolvido por Paloma Dianas. Todos os direitos reservados.
+    </footer>
+</body>
+
+</html>
